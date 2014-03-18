@@ -40,7 +40,10 @@ class TIMIT(Dataset):
     def __init__(self, which_set, frame_length, overlap=0,
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
-                 noise = False ):
+                 noise = False,
+                 speakers = None,
+                 phones = None,
+                 mid_third = False ):
         """
         Parameters
         ----------
@@ -71,6 +74,9 @@ class TIMIT(Dataset):
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
         self.noise = noise
+        self.speakers = speakers
+        self.phones = phones
+        self.mid_third = mid_third
 
         # RNG initialization
         if hasattr(rng, 'random_integers'):
