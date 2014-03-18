@@ -86,6 +86,21 @@ class TIMIT(Dataset):
 
         # Load data from disk
         self._load_data(which_set)
+        
+        # Filter out speakers that we do not want to include        
+        if self.speaker_filter != None :
+            indices_to_keep = []
+            for sequence_id, speaker in enumerate(self.speaker_id):
+                if speaker in self.speaker_filter:
+                    indices_to_keep.append( sequence_id )
+            self.raw_wav = self.raw_wav[indices_to_keep]
+            self.phones  = self.phones[indices_to_keep]
+            self.phonemes = self.phonemes[indices_to_keep]
+            self.words   = self.words[indices_to_keep]
+            self.timing_left = self.timing_left[indices_to_keep]
+            self.timing_past = self.timing_past[indices_to_keep]
+            self.speaker_id = self.speaker_id[indices_to_keep]
+        
         # Standardize data
         for i, sequence in enumerate(self.raw_wav):
             self.raw_wav[i] = (sequence - TIMIT._mean) / TIMIT._std
