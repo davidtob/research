@@ -84,9 +84,12 @@ class TIMIT(Dataset):
         else:
             self.rng = numpy.random.RandomState(rng)
 
-        # Load data from disk
+        print "loading data"
+        # Load data from disk        
         self._load_data(which_set)
-        
+        print "done loading data"
+
+        print "filtering speakers"
         # Filter out speakers that we do not want to include        
         if self.speaker_filter != None :
             indices_to_keep = []
@@ -100,7 +103,40 @@ class TIMIT(Dataset):
             self.timing_left = self.timing_left[indices_to_keep]
             self.timing_past = self.timing_past[indices_to_keep]
             self.speaker_id = self.speaker_id[indices_to_keep]
-        
+        print "done filtering speakers"
+              
+        # Filter out phones that we do not want to include (making a new sequence for each phone we do include)
+        print "Filtering phones"
+        if self.phone_filter != None :
+            new_raw_wav = []
+            new_phones = []
+            new_phonemes = []
+            new_words = []
+            new_timing_left = []
+            new_timing_past = []
+            new_speaker_id = []
+            for sequence_id, speaker in enumerate(self.raw_wav):
+                phone_start_indices = numpy.where( self.timing_past[sequence_id]==0 )[0]
+                for phn_start, phn_end in zip( phone_start_indices, phone_start_indices[1:]+tuple([-1]) ):                    
+                    if self.phones[sequence_id][phn_start] in self.phone_filter:
+                        if self.mid_third == True:
+                            phn_start, phn_end = (phn_start + (phn_end-phn_start)/3, phn_end - (phn_end - phn_start)/3)
+                        new_raw_wav.append    (  self.raw_wav[sequence_id][phn_start:phn_end]  )
+                        new_phones.append     (  self.phones[sequence_id][phn_start:phn_end]   )
+                        new_phonemes.append   (  self.phonemes[sequence_id][phn_start:phn_end] )
+                        new_words.append      (  self.words[sequence_id][phn_start:phn_end]    )
+                        new_timing_left.append(  self.timing_left[sequence_id][phn_start:phn_end] )
+                        new_timing_past.append(  self.timing_past[sequence_id][phn_start:phn_end] )
+                        new_speaker_id.append (  self.speaker_id[sequence_id] )
+            self.raw_wav = new_raw_wav
+            self.phones = new_phones
+            self.phonemes = new_phonemes
+            self.words = new_words
+            self.timing_left = new_timing_left
+            self.timing_past = new_timing_past
+            self.speaker_id = new_speaker_id
+        print "Done filtering phones"
+
         # Standardize data
         for i, sequence in enumerate(self.raw_wav):
             self.raw_wav[i] = (sequence - TIMIT._mean) / TIMIT._std
@@ -194,6 +230,8 @@ class TIMIT(Dataset):
             num_frames = samples_segmented_sequence.shape[0]
             num_examples = num_frames - self.frames_per_example
             examples_per_sequence.append(num_examples)
+        
+        print "Num exmaples:", sum(examples_per_sequence)
         
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
         self.samples_sequences = self.raw_wav
@@ -337,10 +375,9 @@ class TIMIT(Dataset):
                                      which_set + "_x_phones.npy")
         words_path = os.path.join(timit_base_path, which_set + "_x_words.npy")
         speaker_path = os.path.join(timit_base_path,
-                                    which_set + "_spkr.npy")        
+                                    which_set + "_spkr.npy")
         timing_past_path = os.path.join(timit_base_path, which_set + "_x_timing_past.npy")
-        timing_left_path = os.path.join(timit_base_path, which_set + "_x_timing_left.npy")
-        
+        timing_left_path = os.path.join(timit_base_path, which_set + "_x_timing_left.npy")       
 
         # Load data. For now most of it is not used, as only the acoustic
         # samples are provided, but this is bound to change eventually.
@@ -356,12 +393,17 @@ class TIMIT(Dataset):
         # Set-related data
         self.raw_wav = serial.load(raw_wav_path)
         if not self.audio_only:
+            print "loading phonemes, phones, words and speakers",
             self.phonemes = serial.load(phonemes_path)
             self.phones = serial.load(phones_path)
             self.words = serial.load(words_path)
             self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
+            print "done"
+            print "loading timing data",
             self.timing_past = serial.load(timing_past_path)
             self.timing_left = serial.load(timing_left_path)
+            print "done"
+
 
     def _validate_source(self, source):
         """
