@@ -300,7 +300,8 @@ class TIMIT(Dataset):
         words_path = os.path.join(timit_base_path, which_set + "_x_words.npy")
         speaker_path = os.path.join(timit_base_path,
                                     which_set + "_spkr.npy")        
-        timing_path = os.path.join(timit_base_path, which_set + "_x_timing.npy")
+        timing_past_path = os.path.join(timit_base_path, which_set + "_x_timing_past.npy")
+        timing_left_path = os.path.join(timit_base_path, which_set + "_x_timing_left.npy")
         
 
         # Load data. For now most of it is not used, as only the acoustic
@@ -321,7 +322,8 @@ class TIMIT(Dataset):
             self.phones = serial.load(phones_path)
             self.words = serial.load(words_path)
             self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
-            self.timing = serial.load(timing_path)            
+            self.timing_past = serial.load(timing_past_path)
+            self.timing_left = serial.load(timing_left_path)
 
     def _validate_source(self, source):
         """
@@ -497,6 +499,8 @@ class TIMITSequences(Dataset):
         phones_sequences = []
         phonemes_sequences = []
         words_sequences = []
+        timing_past_sequences = []
+        timing_left_sequences = []
         for sequence_id, samples_sequence in enumerate(self.raw_wav):
             # Sequence segmentation
             samples_segmented_sequence = segment_axis(samples_sequence,
@@ -519,6 +523,14 @@ class TIMITSequences(Dataset):
                 words_sequences.append(target_words.reshape(
                     (target_words.shape[0], 1)
                 ))
+                target_timing_past = self.timing_past[sequence_id][frame_length:]
+                timing_past_sequences.append(target_timing_past.reshape(
+                    (target_timing_past.shape[0], 1)
+                ))
+                target_timing_left = self.timing_left[sequence_id][frame_length:]
+                timing_left_sequences.append(target_timing_left.reshape(
+                    (target_timing_left.shape[0], 1)
+                ))                            
 
         del self.raw_wav
         self.samples_sequences = samples_sequences
@@ -531,6 +543,8 @@ class TIMITSequences(Dataset):
             self.phones_sequences = phones_sequences
             self.phonemes_sequences = phonemes_sequences
             self.words_sequences = words_sequences
+            self.target_timing_past = target_timing_past
+            self.target_timing_left = target_timing_left
             self.data.extend([phones_sequences, phonemes_sequences,
                               words_sequences])
         self.num_examples = len(samples_sequences)
