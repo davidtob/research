@@ -158,7 +158,7 @@ class TIMIT(Dataset):
             num_frames = samples_segmented_sequence.shape[0]
             num_examples = num_frames - self.frames_per_example
             examples_per_sequence.append(num_examples)
-
+        
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
         self.samples_sequences = self.raw_wav
         if not self.audio_only:
