@@ -282,8 +282,9 @@ class TIMIT(Dataset):
         batch_components = [None, None]
 
         if not self.audio_only:
-            num_phones = numpy.max([numpy.max(sequence) for sequence
-                                    in self.phones]) + 1
+            #num_phones = numpy.max([numpy.max(sequence) for sequence
+            #                        in self.phones]) + 1
+            num_phones = 62
             phones_space = IndexSpace(max_labels=num_phones, dim=1,
                                       dtype=str(self.phones_sequences[0].dtype))
             phones_source = 'phones'
