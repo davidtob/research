@@ -299,7 +299,9 @@ class TIMIT(Dataset):
                                      which_set + "_x_phones.npy")
         words_path = os.path.join(timit_base_path, which_set + "_x_words.npy")
         speaker_path = os.path.join(timit_base_path,
-                                    which_set + "_spkr.npy")
+                                    which_set + "_spkr.npy")        
+        timing_path = os.path.join(timit_base_path, which_set + "_x_timing.npy")
+        
 
         # Load data. For now most of it is not used, as only the acoustic
         # samples are provided, but this is bound to change eventually.
@@ -319,6 +321,7 @@ class TIMIT(Dataset):
             self.phones = serial.load(phones_path)
             self.words = serial.load(words_path)
             self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
+            self.timing = serial.load(timing_path)            
 
     def _validate_source(self, source):
         """
