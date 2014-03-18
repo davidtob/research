@@ -105,6 +105,9 @@ class TIMIT(Dataset):
                 self.words = self.words[start:]
 
         examples_per_sequence = [0]
+        
+        if self.speakers != None :
+            self.raw_wav = self.raw_wave[self.speaker_id_list in speakers]                        
 
         for sequence_id, samples_sequence in enumerate(self.raw_wav):
             if not self.audio_only:
