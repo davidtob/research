@@ -97,12 +97,16 @@ class TIMIT(Dataset):
                 self.phones = self.phones[start:stop]
                 self.phonemes = self.phonemes[start:stop]
                 self.words = self.words[start:stop]
+                self.timing_left = self.timing_left[start:stop]
+                self.timing_past = self.timing_past[start:stop]
         else:
             self.raw_wav = self.raw_wav[start:]
             if not self.audio_only:
                 self.phones = self.phones[start:]
                 self.phonemes = self.phonemes[start:]
                 self.words = self.words[start:]
+                self.timing_left = self.timing_left[start:]
+                self.timing_past = self.timing_past[start:]                
 
         examples_per_sequence = [0]
         
@@ -154,6 +158,17 @@ class TIMIT(Dataset):
                 # words_segmented_sequence = numpy.asarray(words_segmented_sequence,
                 #                                          dtype='int')
                 # words_sequence_list.append(words_segmented_sequence)
+                timing_left_sequence = self.timing_left[sequence_id]
+                timing_left_segmented_sequence = segment_axis(timing_left_sequence,
+                                                        frame_length,
+                                                        overlap)
+                self.timing_left[sequence_id] = timing_left_segmented_sequence
+                
+                timing_past_sequence = self.timing_left[sequence_id]
+                timing_past_segmented_sequence = segment_axis(timing_past_sequence,
+                                                        frame_length,
+                                                        overlap)
+                self.timing_past[sequence_id] = timing_past_segmented_sequence
 
             # TODO: look at this, does it force copying the data?
             # Sequence segmentation
@@ -174,6 +189,8 @@ class TIMIT(Dataset):
             self.phones_sequences = self.phones
             self.phonemes_sequences = self.phonemes
             self.words_sequences = self.words
+            self.timing_left_sequences = self.timing_left
+            self.timing_past_sequences = self.timing_past
         self.num_examples = self.cumulative_example_indexes[-1]
 
         # DataSpecs
