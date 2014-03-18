@@ -41,8 +41,8 @@ class TIMIT(Dataset):
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
                  noise = False,
-                 speakers = None,
-                 phones = None,
+                 speaker_filter = None,
+                 phone_filter = None,
                  mid_third = False ):
         """
         Parameters
@@ -74,8 +74,8 @@ class TIMIT(Dataset):
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
         self.noise = noise
-        self.speakers = speakers
-        self.phones = phones
+        self.speaker_filter = speaker_filter
+        self.phone_filter = phone_filter
         self.mid_third = mid_third
 
         # RNG initialization
@@ -109,9 +109,6 @@ class TIMIT(Dataset):
                 self.timing_past = self.timing_past[start:]                
 
         examples_per_sequence = [0]
-        
-        if self.speakers != None :
-            self.raw_wav = self.raw_wave[self.speaker_id_list in speakers]                        
 
         for sequence_id, samples_sequence in enumerate(self.raw_wav):
             if not self.audio_only:
