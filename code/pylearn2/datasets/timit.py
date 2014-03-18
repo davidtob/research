@@ -184,7 +184,7 @@ class TIMIT(Dataset):
             for sequence_index, example_index in self._fetch_index(indexes):
                 rval.append(
                     (self.samples_sequences[sequence_index][example_index:example_index + self.frames_per_example]
-                    + self.this_epoch_noise[sequence_index][example_index:example_index + self.frames_per_example]).ravel())
+                    + self.noise_this_epoch[sequence_index][example_index:example_index + self.frames_per_example]).ravel())
             return rval
             
 
@@ -418,7 +418,7 @@ class TIMIT(Dataset):
         
         if self.noise != False:
             lengths = map( lambda x: len(x), self.samples_sequences )
-            self.noise_this_epoch = map( lambda seq: numpy.random.normal( 0, self.noise, n ), lengths )
+            self.noise_this_epoch = map( lambda length: numpy.random.normal( 0, self.noise, (length,1) ), lengths )
         
         return FiniteDatasetIterator(self,
                                      mode(self.num_examples, batch_size,
