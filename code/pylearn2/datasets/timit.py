@@ -39,7 +39,8 @@ class TIMIT(Dataset):
 
     def __init__(self, which_set, frame_length, overlap=0,
                  frames_per_example=1, start=0, stop=None, audio_only=False,
-                 rng=_default_seed):
+                 rng=_default_seed,
+                 noise = False ):
         """
         Parameters
         ----------
@@ -69,6 +70,7 @@ class TIMIT(Dataset):
         self.frames_per_example = frames_per_example
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
+        self.noise = noise
 
         # RNG initialization
         if hasattr(rng, 'random_integers'):
@@ -176,6 +178,15 @@ class TIMIT(Dataset):
                 rval.append(self.samples_sequences[sequence_index][example_index:example_index
                     + self.frames_per_example].ravel())
             return rval
+            
+        def features_map_fn_noise(indexes):
+            rval = []
+            for sequence_index, example_index in self._fetch_index(indexes):
+                rval.append(
+                    (self.samples_sequences[sequence_index][example_index:example_index + self.frames_per_example]
+                    + self.this_epoch_noise[sequence_index][example_index:example_index + self.frames_per_example]).ravel())
+            return rval
+            
 
         targets_space = VectorSpace(dim=self.frame_length)
         targets_source = 'targets'
@@ -188,7 +199,10 @@ class TIMIT(Dataset):
 
         space_components = [features_space, targets_space]
         source_components = [features_source, targets_source]
-        map_fn_components = [features_map_fn, targets_map_fn]
+        if self.noise == False:
+            map_fn_components = [features_map_fn, targets_map_fn]
+        else:
+            map_fn_components = [features_map_fn_noise, targets_map_fn]
         batch_components = [None, None]
 
         if not self.audio_only:
@@ -231,7 +245,7 @@ class TIMIT(Dataset):
             space_components.extend([phones_space, phonemes_space,
                                      words_space])
             source_components.extend([phones_source, phonemes_source,
-                                     words_source])
+                                     words_source])            
             map_fn_components.extend([phones_map_fn, phonemes_map_fn,
                                      words_map_fn])
             batch_components.extend([None, None, None])
@@ -401,6 +415,11 @@ class TIMIT(Dataset):
             num_batches = getattr(self, '_iter_num_batches', None)
         if rng is None and mode.stochastic:
             rng = self.rng
+        
+        if self.noise != False:
+            lengths = map( lambda x: len(x), self.samples_sequences )
+            self.noise_this_epoch = map( lambda seq: numpy.random.normal( 0, self.noise, n ), lengths )
+        
         return FiniteDatasetIterator(self,
                                      mode(self.num_examples, batch_size,
                                           num_batches, rng),
