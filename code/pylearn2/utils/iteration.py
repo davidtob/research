@@ -3,6 +3,7 @@ from theano import config
 from pylearn2.space import CompositeSpace
 from pylearn2.utils import safe_zip
 from pylearn2.utils.data_specs import is_flat_specs
+from pylearn2.utils.iteration import *
 
 
 class FiniteDatasetIterator(object):
@@ -154,3 +155,48 @@ class FiniteDatasetIterator(object):
             WRITEME
         """
         return self._subset_iterator.stochastic
+
+class ShuffledSequentialSubsetInSubsetIterator(SequentialSubsetIterator):
+    """
+    .. todo::
+
+        WRITEME
+    """
+    stochastic = True
+    fancy = True
+
+    def __init__(self, dataset_indices, batch_size, num_batches, rng=None):
+        """
+        .. todo::
+
+            WRITEME
+        """
+        super(ShuffledSequentialSubsetIterator, self).__init__(
+            len(dataset_indices),
+            batch_size,
+            num_batches,
+            None
+        )
+        self._rng = make_np_rng(rng, which_method=["random_integers", "shuffle"])
+        self._shuffled = dataset_indices#numpy.arange(self._dataset_size)
+        self._rng.shuffle(self._shuffled)
+
+    def next(self):
+        """
+        .. todo::
+
+            WRITEME
+        """
+        if self._batch >= self.num_batches or self._idx >= self._dataset_size:
+            raise StopIteration()
+
+        # this fix the problem where dataset_size % batch_size != 0
+        elif (self._idx + self._batch_size) > self._dataset_size:
+            rval = self._shuffled[self._idx: self._dataset_size]
+            self._idx = self._dataset_size
+            return rval
+        else:
+            rval = self._shuffled[self._idx: self._idx + self._batch_size]
+            self._idx += self._batch_size
+            self._batch += 1
+            return rval

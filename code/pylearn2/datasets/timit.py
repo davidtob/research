@@ -79,63 +79,90 @@ class TIMIT(Dataset):
         self.mid_third = mid_third
 
         # RNG initialization
-        if hasattr(rng, 'random_integers'):
+        if hasattr(rng, 'random_integers') and hasattr(rng,'permutation'):
             self.rng = rng
         else:
             self.rng = numpy.random.RandomState(rng)
 
         print "loading data"
-        # Load data from disk        
-        self._load_data(which_set)
+        # Load data from disk
+        if self.speaker_filter==None:
+            self._load_data(which_set)
+        else:
+            self._load_data('train')
         print "done loading data"
 
-        print "filtering speakers"
-        # Filter out speakers that we do not want to include        
-        if self.speaker_filter != None :
-            indices_to_keep = []
-            for sequence_id, speaker in enumerate(self.speaker_id):
-                if speaker in self.speaker_filter:
-                    indices_to_keep.append( sequence_id )
-            self.raw_wav = self.raw_wav[indices_to_keep]
-            self.phones  = self.phones[indices_to_keep]
-            self.phonemes = self.phonemes[indices_to_keep]
-            self.words   = self.words[indices_to_keep]
+#        print "filtering speakers"
+#        # Filter out speakers that we do not want to include        
+#        if self.speaker_filter != None :
+#            indices_to_keep = []
+#            for sequence_id, speaker in enumerate(self.speaker_id):
+#                if speaker in self.speaker_filter:
+#                    indices_to_keep.append( sequence_id )
+#            self.raw_wav = self.raw_wav[indices_to_keep]
+#            self.phones  = self.phones[indices_to_keep]
+#            self.phonemes = self.phonemes[indices_to_keep]
+#            self.words   = self.words[indices_to_keep]
+#            self.timing_left = self.timing_left[indices_to_keep]
+#            self.timing_past = self.timing_past[indices_to_keep]
+#            self.speaker_id = self.speaker_id[indices_to_keep]
+#        print "done filtering speakers:"#, len(self.raw_wav), "left"
+
+        # Filter out phones that we do not want to include (making a new sequence for each phone we do include)
+#        print "Filtering phones"
+#        if self.phone_filter != None :
+#            new_raw_wav = []
+#            new_phones = []
+#            new_phonemes = []
+#            new_words = []
+#            new_timing_left = []
+#            new_timing_past = []
+#            new_speaker_id = []
+#            for sequence_id, speaker in enumerate(self.raw_wav):
+#                phone_start_indices = numpy.where( self.timing_past[sequence_id]==0 )[0]
+#                print phone_start_indices
+#                for phn_start, phn_end in zip( phone_start_indices, phone_start_indices[1:]+tuple([-1]) ):
+#                    print "***", self.phones[sequence_id][phn_start]              
+#                    if self.phones[sequence_id][phn_start] in self.phone_filter:
+#                        if self.mid_third == True:
+#                            phn_start, phn_end = (phn_start + (phn_end-phn_start)/3, phn_end - (phn_end - phn_start)/3)
+#                        new_raw_wav.append    (  self.raw_wav[sequence_id][phn_start:phn_end]  )
+#                        new_phones.append     (  self.phones[sequence_id][phn_start:phn_end]   )
+#                        new_phonemes.append   (  self.phonemes[sequence_id][phn_start:phn_end] )
+#                        new_words.append      (  self.words[sequence_id][phn_start:phn_end]    )
+#                        new_timing_left.append(  self.timing_left[sequence_id][phn_start:phn_end] )
+#                        new_timing_past.append(  self.timing_past[sequence_id][phn_start:phn_end] )
+#                        new_speaker_id.append (  self.speaker_id[sequence_id] )
+#            self.raw_wav = new_raw_wav
+#            self.phones = new_phones
+#            self.phonemes = new_phonemes
+#            self.words = new_words
+#            self.timing_left = new_timing_left
+#            self.timing_past = new_timing_past
+#            self.speaker_id = new_speaker_id
+#        print "Done filtering phones", len(self.raw_wav), "left"
+        
+        # If we are filtering by speaker the validation set should be
+        # form the same speaker (not the case for the preprocessed files
+        # in data/lisa/data)
+        print self.speaker_filter
+        if self.speaker_filter != None:
+            perm = self.rng.permutation( len(self.raw_wav) )
+            first_valid = int(len(perm)*0.8)
+            train_indices = perm[0:first_valid]
+            valid_indices = perm[first_valid:]
+            if which_set=='train':
+                indices_to_keep = train_indices
+            else:
+                indices_to_keep = valid_indices
+            print perm,first_valid,len(perm),len(self.raw_wav)
+            self.raw_wav     = self.raw_wav[indices_to_keep]
+            self.phones      = self.phones[indices_to_keep]
+            self.phonemes    = self.phonemes[indices_to_keep]
+            self.words       = self.words[indices_to_keep]
             self.timing_left = self.timing_left[indices_to_keep]
             self.timing_past = self.timing_past[indices_to_keep]
-            self.speaker_id = self.speaker_id[indices_to_keep]
-        print "done filtering speakers"
-              
-        # Filter out phones that we do not want to include (making a new sequence for each phone we do include)
-        print "Filtering phones"
-        if self.phone_filter != None :
-            new_raw_wav = []
-            new_phones = []
-            new_phonemes = []
-            new_words = []
-            new_timing_left = []
-            new_timing_past = []
-            new_speaker_id = []
-            for sequence_id, speaker in enumerate(self.raw_wav):
-                phone_start_indices = numpy.where( self.timing_past[sequence_id]==0 )[0]
-                for phn_start, phn_end in zip( phone_start_indices, phone_start_indices[1:]+tuple([-1]) ):                    
-                    if self.phones[sequence_id][phn_start] in self.phone_filter:
-                        if self.mid_third == True:
-                            phn_start, phn_end = (phn_start + (phn_end-phn_start)/3, phn_end - (phn_end - phn_start)/3)
-                        new_raw_wav.append    (  self.raw_wav[sequence_id][phn_start:phn_end]  )
-                        new_phones.append     (  self.phones[sequence_id][phn_start:phn_end]   )
-                        new_phonemes.append   (  self.phonemes[sequence_id][phn_start:phn_end] )
-                        new_words.append      (  self.words[sequence_id][phn_start:phn_end]    )
-                        new_timing_left.append(  self.timing_left[sequence_id][phn_start:phn_end] )
-                        new_timing_past.append(  self.timing_past[sequence_id][phn_start:phn_end] )
-                        new_speaker_id.append (  self.speaker_id[sequence_id] )
-            self.raw_wav = new_raw_wav
-            self.phones = new_phones
-            self.phonemes = new_phonemes
-            self.words = new_words
-            self.timing_left = new_timing_left
-            self.timing_past = new_timing_past
-            self.speaker_id = new_speaker_id
-        print "Done filtering phones"
+            self.speaker_id  = self.speaker_id[indices_to_keep]			
 
         # Standardize data
         for i, sequence in enumerate(self.raw_wav):
@@ -231,9 +258,37 @@ class TIMIT(Dataset):
             num_examples = num_frames - self.frames_per_example
             examples_per_sequence.append(num_examples)
         
-        print "Num exmaples:", sum(examples_per_sequence)
         
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
+        
+        self.filtered_indices = None
+        if self.speaker_filter!=None:
+            self.filtered_indices = []
+            prev_index = 0
+            for sequence_id, end_index in enumerate(self.cumulative_example_indexes[:-1]):
+                if self.speaker_id[sequence_id] in self.speaker_filter:
+                    self.filtered_indices = self.filtered_indices + range(prev_index, end_index)
+                prev_index = end_index
+            
+        
+        if self.phone_filter!=None:
+            if self.filtered_indices == None:
+                self.filtered_indices = range(self.cumulative_example_indexes[-1])
+            indexes = self.filtered_indices
+            print len(indexes)
+            digit = numpy.digitize(indexes, self.cumulative_example_indexes) - 1
+            indices = zip(digit, numpy.array(indexes) - self.cumulative_example_indexes[digit], numpy.array(indexes))
+            new_filtered_indices = []
+            for sent_idx, offset, ex_index in indices:
+                if self.phones[ sent_idx ][offset + self.frames_per_example] in self.phone_filter:
+                    left = self.timing_left[ sent_idx ][offset + self.frames_per_example]
+                    past = self.timing_past[ sent_idx ][offset + self.frames_per_example]
+                    if self.mid_third==False or (self.mid_third and left>(left+past)/3 and past>(left+past)/3):
+                        new_filtered_indices.append( ex_index )
+            self.filtered_indices = new_filtered_indices
+                    
+            
+       
         self.samples_sequences = self.raw_wav
         if not self.audio_only:
             self.phones_sequences = self.phones
@@ -242,6 +297,8 @@ class TIMIT(Dataset):
             self.timing_left_sequences = self.timing_left
             self.timing_past_sequences = self.timing_past
         self.num_examples = self.cumulative_example_indexes[-1]
+        
+        print "Num exmaples:", self.num_examples
 
         # DataSpecs
         features_space = VectorSpace(
@@ -485,6 +542,7 @@ class TIMIT(Dataset):
         for sp, src in safe_zip(sub_spaces, sub_sources):
             convert.append(None)
 
+        print mode
         # TODO: Refactor
         if mode is None:
             if hasattr(self, '_iter_subset_class'):
@@ -505,13 +563,24 @@ class TIMIT(Dataset):
         if self.noise != False:
             lengths = map( lambda x: len(x), self.samples_sequences )
             self.noise_this_epoch = map( lambda length: numpy.random.normal( 0, self.noise, (length,1) ), lengths )
-        
-        return FiniteDatasetIterator(self,
-                                     mode(self.num_examples, batch_size,
-                                          num_batches, rng),
-                                     data_specs=data_specs,
-                                     return_tuple=return_tuple,
-                                     convert=convert)
+            
+        if self.speaker_filter==None:        
+            return FiniteDatasetIterator(self,
+                                         mode(self.num_examples, batch_size,
+                                              num_batches, rng),
+                                         data_specs=data_specs,
+                                         return_tuple=return_tuple,
+                                         convert=convert)
+        else:
+            mode = research.pylearn2.utils.iterator.ShuffledSequentialSubsetInSubsetIterator
+            iterator = mode( self.filtered_indices, batch_size, num_batches, rng)
+            return FiniteDatasetIterator(self,
+                                         iterator,
+                                         data_specs=data_specs,
+                                         return_tuple=return_tuple,
+                                         convert=convert)
+            
+
 
 
 #class TIMITSequences(Dataset):
