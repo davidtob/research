@@ -26,7 +26,7 @@ from research.code.pylearn2.utils.iteration import FiniteDatasetIterator
 import scipy.stats
 
 
-class TIMIT(Dataset):
+class TIMITOnTheFly(Dataset):
     """
     Frame-based TIMIT dataset
     """
@@ -40,7 +40,7 @@ class TIMIT(Dataset):
     def __init__(self, which_set, frame_length, overlap=0,
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
-                 noise = False ):
+                 noise = None):
         """
         Parameters
         ----------
@@ -80,9 +80,6 @@ class TIMIT(Dataset):
 
         # Load data from disk
         self._load_data(which_set)
-        # Standardize data
-        for i, sequence in enumerate(self.raw_wav):
-            self.raw_wav[i] = (sequence - TIMIT._mean) / TIMIT._std
 
         # Slice data
         if stop is not None:
@@ -98,73 +95,10 @@ class TIMIT(Dataset):
                 self.phonemes = self.phonemes[start:]
                 self.words = self.words[start:]
 
-        examples_per_sequence = [0]
-
-        for sequence_id, samples_sequence in enumerate(self.raw_wav):
-            if not self.audio_only:
-                # Phones segmentation
-                phones_sequence = self.phones[sequence_id]
-                phones_segmented_sequence = segment_axis(phones_sequence,
-                                                         frame_length,
-                                                         overlap)
-                self.phones[sequence_id] = phones_segmented_sequence
-                # phones_segmented_sequence = scipy.stats.mode(
-                #     phones_segmented_sequence,
-                #     axis=1
-                # )[0].flatten()
-                # phones_segmented_sequence = numpy.asarray(
-                #     phones_segmented_sequence,
-                #     dtype='int'
-                # )
-                # phones_sequence_list.append(phones_segmented_sequence)
-                # Phonemes segmentation
-                phonemes_sequence = self.phonemes[sequence_id]
-                phonemes_segmented_sequence = segment_axis(phonemes_sequence,
-                                                           frame_length,
-                                                           overlap)
-                self.phonemes[sequence_id] = phonemes_segmented_sequence
-                # phonemes_segmented_sequence = scipy.stats.mode(
-                #     phonemes_segmented_sequence,
-                #     axis=1
-                # )[0].flatten()
-                # phonemes_segmented_sequence = numpy.asarray(
-                #     phonemes_segmented_sequence,
-                #     dtype='int'
-                # )
-                # phonemes_sequence_list.append(phonemes_segmented_sequence)
-                # Words segmentation
-                words_sequence = self.words[sequence_id]
-                words_segmented_sequence = segment_axis(words_sequence,
-                                                        frame_length,
-                                                        overlap)
-                self.words[sequence_id] = words_segmented_sequence
-                # words_segmented_sequence = scipy.stats.mode(
-                #     words_segmented_sequence,
-                #     axis=1
-                # )[0].flatten()
-                # words_segmented_sequence = numpy.asarray(words_segmented_sequence,
-                #                                          dtype='int')
-                # words_sequence_list.append(words_segmented_sequence)
-
-            # TODO: look at this, does it force copying the data?
-            # Sequence segmentation
-            samples_segmented_sequence = segment_axis(samples_sequence,
-                                                      frame_length,
-                                                      overlap)
-            self.raw_wav[sequence_id] = samples_segmented_sequence
-
-            # TODO: change me
-            # Generate features/targets/phones/phonemes/words map
-            num_frames = samples_segmented_sequence.shape[0]
-            num_examples = num_frames - self.frames_per_example
-            examples_per_sequence.append(num_examples)
+        examples_per_sequence = [0] + map( lambda x: len(x) - self.frames_per_example, self.raw_wav )
         
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
         self.samples_sequences = self.raw_wav
-        if not self.audio_only:
-            self.phones_sequences = self.phones
-            self.phonemes_sequences = self.phonemes
-            self.words_sequences = self.words
         self.num_examples = self.cumulative_example_indexes[-1]
 
         # DataSpecs
@@ -172,31 +106,22 @@ class TIMIT(Dataset):
             dim=self.frame_length * self.frames_per_example
         )
         features_source = 'features'
-        def features_map_fn(indexes):
-            rval = []
-            for sequence_index, example_index in self._fetch_index(indexes):
-                rval.append(self.samples_sequences[sequence_index][example_index:example_index
-                    + self.frames_per_example].ravel())
-            return rval
+        def features_map_fn(indices, batch_buffer):            
+            for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
+                batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index:example_index
+                                                                           + self.frames_per_example].ravel()
+            batch_buffer = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std
             
-        def features_map_fn_noise(indexes):
-            rval = []
-            for sequence_index, example_index in self._fetch_index(indexes):
-                rval.append(
-                    (self.samples_sequences[sequence_index][example_index:example_index + self.frames_per_example]
-                    + self.noise_this_epoch[sequence_index][example_index:example_index + self.frames_per_example]).ravel())
-            return rval
-            
-
+        def features_map_fn_noise(indices, batch_buffer):
+            features_map_fn(indices, batch_buffer )
+            batch_buffer = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape )
+                    
         targets_space = VectorSpace(dim=self.frame_length)
         targets_source = 'targets'
-        def targets_map_fn(indexes):
-            rval = []
-            for sequence_index, example_index in self._fetch_index(indexes):
-                rval.append(self.samples_sequences[sequence_index][example_index
-                    + self.frames_per_example].ravel())
-            return rval
-
+        def targets_map_fn(indices, batch_buffer):
+            for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
+                batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index
+                                                                           + self.frames_per_example].ravel()
         space_components = [features_space, targets_space]
         source_components = [features_source, targets_source]
         if self.noise == False:
@@ -262,10 +187,10 @@ class TIMIT(Dataset):
                                                  targets_space)),
                                  (features_source, targets_source))
 
-    def _fetch_index(self, indexes):
-        digit = numpy.digitize(indexes, self.cumulative_example_indexes) - 1
+    def _fetch_index(self, indices):
+        digit = numpy.digitize(indices, self.cumulative_example_indexes) - 1
         return zip(digit,
-                   numpy.array(indexes) - self.cumulative_example_indexes[digit])
+                   numpy.array(indices) - self.cumulative_example_indexes[digit])
 
     def _load_data(self, which_set):
         """
@@ -313,12 +238,12 @@ class TIMIT(Dataset):
             self.words_list = serial.load(words_list_path)
             self.phonemes_list = serial.load(phonemes_list_path)
         # Set-related data
-        self.raw_wav = serial.load(raw_wav_path)
-        if not self.audio_only:
-            self.phonemes = serial.load(phonemes_path)
-            self.phones = serial.load(phones_path)
-            self.words = serial.load(words_path)
-            self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
+        self.raw_wav = serial.load(raw_wav_path)        
+        #if not self.audio_only:
+            #self.phonemes = serial.load(phonemes_path)
+            #self.phones = serial.load(phones_path)
+            #self.words = serial.load(words_path)
+            #self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
 
     def _validate_source(self, source):
         """
@@ -351,25 +276,23 @@ class TIMIT(Dataset):
         """
         return self.data_specs
 
-    def get(self, source, indexes):
+    def get(self, source, indices):
         """
         .. todo::
 
             WRITEME
         """
-        if type(indexes) is slice:
-            indexes = numpy.arange(indexes.start, indexes.stop)
+        if type(indices) is slice:
+            indices = numpy.arange(indices.start, indices.stop)
         self._validate_source(source)
         rval = []
-        for so in source:
-            batch = self.map_functions[self.data_specs[1].index(so)](indexes)
+        for so in source:                       
             batch_buffer = self.batch_buffers[self.data_specs[1].index(so)]
             dim = self.data_specs[0].components[self.data_specs[1].index(so)].dim
             if batch_buffer is None or batch_buffer.shape != (len(batch), dim):
-                batch_buffer = numpy.zeros((len(batch), dim),
-                                           dtype=batch[0].dtype)
-            for i, example in enumerate(batch):
-                batch_buffer[i] = example
+                batch_buffer = numpy.zeros((len(indices), dim),
+                                           dtype=self.data_specs[0].components[ self.data_specs[1].index(so) ].dtype)
+            self.map_functions[ self.data_specs[1].index(so) ](indices, batch_buffer)
             rval.append(batch_buffer)
         return tuple(rval)
 
@@ -380,9 +303,9 @@ class TIMIT(Dataset):
         .. todo::
 
             WRITEME
-        """
+        """        
         if data_specs is None:
-            data_specs = self._iter_data_specs
+            data_specs = self._iter_data_specs                
 
         # If there is a view_converter, we have to use it to convert
         # the stored data for "features" into one that the iterator
@@ -415,10 +338,6 @@ class TIMIT(Dataset):
             num_batches = getattr(self, '_iter_num_batches', None)
         if rng is None and mode.stochastic:
             rng = self.rng
-        
-        if self.noise != False:
-            lengths = map( lambda x: len(x), self.samples_sequences )
-            self.noise_this_epoch = map( lambda length: numpy.random.normal( 0, self.noise, (length,1) ), lengths )
         
         return FiniteDatasetIterator(self,
                                      mode(self.num_examples, batch_size,

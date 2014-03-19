@@ -92,6 +92,7 @@ class FiniteDatasetIterator(object):
         return self
 
     def next(self):
+        print "Getting next batch"
         """
         .. todo::
 
@@ -108,6 +109,7 @@ class FiniteDatasetIterator(object):
 
         if not self._return_tuple and len(rval) == 1:
             rval, = rval
+        print "Returning batch"
         return rval
 
     @property
