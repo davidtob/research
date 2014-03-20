@@ -1,8 +1,10 @@
 import numpy
+import sys
 from theano import config
 from pylearn2.space import CompositeSpace
 from pylearn2.utils import safe_zip
 from pylearn2.utils.data_specs import is_flat_specs
+from pylearn2.utils.iteration import *
 
 
 class FiniteDatasetIterator(object):
@@ -11,6 +13,7 @@ class FiniteDatasetIterator(object):
     """
     def __init__(self, dataset, subset_iterator,
                  data_specs=None, return_tuple=False, convert=None):
+
         """
         .. todo::
 
@@ -92,7 +95,6 @@ class FiniteDatasetIterator(object):
         return self
 
     def next(self):
-        print "Getting next batch"
         """
         .. todo::
 
@@ -109,7 +111,6 @@ class FiniteDatasetIterator(object):
 
         if not self._return_tuple and len(rval) == 1:
             rval, = rval
-        print "Returning batch"
         return rval
 
     @property

@@ -12,7 +12,7 @@ __email__ = "dumouliv@iro"
 import os.path
 import functools
 import numpy
-from pylearn2.utils.iteration import resolve_iterator_class
+from pylearn2.utils.iteration import resolve_iterator_class, RandomUniformSubsetIterator
 from pylearn2.datasets.dataset import Dataset
 from pylearn2.space import CompositeSpace, VectorSpace, IndexSpace
 from research.code.pylearn2.space import (
@@ -24,7 +24,6 @@ from pylearn2.utils import safe_zip
 from research.code.scripts.segmentaxis import segment_axis
 from research.code.pylearn2.utils.iteration import FiniteDatasetIterator
 import scipy.stats
-
 
 class TIMITOnTheFly(Dataset):
     """
@@ -40,7 +39,7 @@ class TIMITOnTheFly(Dataset):
     def __init__(self, which_set, frame_length, overlap=0,
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
-                 noise = None):
+                 noise = False):
         """
         Parameters
         ----------
@@ -82,24 +81,21 @@ class TIMITOnTheFly(Dataset):
         self._load_data(which_set)
 
         # Slice data
-        if stop is not None:
-            self.raw_wav = self.raw_wav[start:stop]
-            if not self.audio_only:
-                self.phones = self.phones[start:stop]
-                self.phonemes = self.phonemes[start:stop]
-                self.words = self.words[start:stop]
-        else:
-            self.raw_wav = self.raw_wav[start:]
-            if not self.audio_only:
-                self.phones = self.phones[start:]
-                self.phonemes = self.phonemes[start:]
-                self.words = self.words[start:]
+        if stop is None:
+            stop = len(self.raw_wav)
+        if not self.audio_only:
+            self.phone_nums    = self.phone_nums[start:stop]
+            self.phone_offsets = self.phone_offsets[start:stop]
+            #self.phonemes = self.phonemes[start:stop]
+            #self.words = self.words[start:stop]
 
         examples_per_sequence = [0] + map( lambda x: len(x) - self.frames_per_example, self.raw_wav )
         
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
         self.samples_sequences = self.raw_wav
         self.num_examples = self.cumulative_example_indexes[-1]
+        
+        print "number of examples", self.num_examples
 
         # DataSpecs
         features_space = VectorSpace(
@@ -110,11 +106,11 @@ class TIMITOnTheFly(Dataset):
             for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
                 batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index:example_index
                                                                            + self.frames_per_example].ravel()
-            batch_buffer = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std
+            batch_buffer[:,:] = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std # Modify in place
             
         def features_map_fn_noise(indices, batch_buffer):
             features_map_fn(indices, batch_buffer )
-            batch_buffer = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape )
+            batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape ) # Modify in place
                     
         targets_space = VectorSpace(dim=self.frame_length)
         targets_source = 'targets'
@@ -122,6 +118,8 @@ class TIMITOnTheFly(Dataset):
             for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
                 batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index
                                                                            + self.frames_per_example].ravel()
+            batch_buffer[:,:] = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std # Modify in place
+
         space_components = [features_space, targets_space]
         source_components = [features_source, targets_source]
         if self.noise == False:
@@ -131,49 +129,46 @@ class TIMITOnTheFly(Dataset):
         batch_components = [None, None]
 
         if not self.audio_only:
-            num_phones = numpy.max([numpy.max(sequence) for sequence
-                                    in self.phones]) + 1
+            num_phones = 62
             phones_space = IndexSpace(max_labels=num_phones, dim=1,
-                                      dtype=str(self.phones_sequences[0].dtype))
+                                      dtype=str(self.phone_nums[0].dtype))
             phones_source = 'phones'
-            def phones_map_fn(indexes):
-                rval = []
-                for sequence_index, example_index in self._fetch_index(indexes):
-                    rval.append(self.phones_sequences[sequence_index][example_index
-                        + self.frames_per_example].ravel())
-                return rval
+            def phones_map_fn(indices, batch_buffer):
+                for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
+                    digit = numpy.digitize([example_index + self.frames_per_example], self.phone_offsets[sequence_index])[0] - 1
+                    batch_buffer[i,0] =  self.phone_nums[sequence_index][digit]
 
-            num_phonemes = numpy.max([numpy.max(sequence) for sequence
-                                      in self.phonemes]) + 1
-            phonemes_space = IndexSpace(max_labels=num_phonemes, dim=1,
-                                        dtype=str(self.phonemes_sequences[0].dtype))
-            phonemes_source = 'phonemes'
-            def phonemes_map_fn(indexes):
-                rval = []
-                for sequence_index, example_index in self._fetch_index(indexes):
-                    rval.append(self.phonemes_sequences[sequence_index][example_index
-                        + self.frames_per_example].ravel())
-                return rval
+#            num_phonemes = numpy.max([numpy.max(sequence) for sequence
+                                      #in self.phonemes]) + 1
+#            phonemes_space = IndexSpace(max_labels=num_phonemes, dim=1,
+#                                        dtype=str(self.phonemes_sequences[0].dtype))
+#            phonemes_source = 'phonemes'
+#            def phonemes_map_fn(indexes):
+#                rval = []
+#                for sequence_index, example_index in self._fetch_index(indexes):
+#                    rval.append(self.phonemes_sequences[sequence_index][example_index
+#                        + self.frames_per_example].ravel())
+#                return rval
 
-            num_words = numpy.max([numpy.max(sequence) for sequence
-                                   in self.words]) + 1
-            words_space = IndexSpace(max_labels=num_words, dim=1,
-                                     dtype=str(self.words_sequences[0].dtype))
-            words_source = 'words'
-            def words_map_fn(indexes):
-                rval = []
-                for sequence_index, example_index in self._fetch_index(indexes):
-                    rval.append(self.words_sequences[sequence_index][example_index
-                        + self.frames_per_example].ravel())
-                return rval
+#            num_words = numpy.max([numpy.max(sequence) for sequence
+#                                   in self.words]) + 1
+#            words_space = IndexSpace(max_labels=num_words, dim=1,
+                                     #dtype=str(self.words_sequences[0].dtype))
+#            words_source = 'words'
+#            def words_map_fn(indexes):
+#                rval = []
+#                for sequence_index, example_index in self._fetch_index(indexes):
+#                    rval.append(self.words_sequences[sequence_index][example_index
+#                        + self.frames_per_example].ravel())
+#                return rval
 
-            space_components.extend([phones_space, phonemes_space,
-                                     words_space])
-            source_components.extend([phones_source, phonemes_source,
-                                     words_source])            
-            map_fn_components.extend([phones_map_fn, phonemes_map_fn,
-                                     words_map_fn])
-            batch_components.extend([None, None, None])
+            space_components.extend([phones_space])#, phonemes_space,
+                                     #words_space])
+            source_components.extend([phones_source])#, phonemes_source,
+                                     #words_source])            
+            map_fn_components.extend([phones_map_fn])#, phonemes_map_fn,
+                                     #words_map_fn])
+            batch_components.extend([None])#, None, None])
 
         space = CompositeSpace(space_components)
         source = tuple(source_components)
@@ -218,11 +213,13 @@ class TIMITOnTheFly(Dataset):
         speaker_id_list_path = os.path.join(timit_base_path,
                                             "speakers_ids.pkl")
         raw_wav_path = os.path.join(timit_base_path, which_set + "_x_raw.npy")
-        phonemes_path = os.path.join(timit_base_path,
-                                     which_set + "_x_phonemes.npy")
-        phones_path = os.path.join(timit_base_path,
-                                     which_set + "_x_phones.npy")
-        words_path = os.path.join(timit_base_path, which_set + "_x_words.npy")
+        #phonemes_path = os.path.join(timit_base_path,
+        #                             which_set + "_x_phonemes.npy")
+        phone_nums_path   = os.path.join(timit_base_path,
+                                     which_set + "_x_compact_phone_nums.npy")
+        phone_offsets_path = os.path.join(timit_base_path,
+                                     which_set + "_x_compact_phone_offsets.npy")
+        #words_path = os.path.join(timit_base_path, which_set + "_x_words.npy")
         speaker_path = os.path.join(timit_base_path,
                                     which_set + "_spkr.npy")
 
@@ -239,11 +236,13 @@ class TIMITOnTheFly(Dataset):
             self.phonemes_list = serial.load(phonemes_list_path)
         # Set-related data
         self.raw_wav = serial.load(raw_wav_path)        
-        #if not self.audio_only:
+        if not self.audio_only:
+            self.phone_nums    = serial.load(phone_nums_path)
+            self.phone_offsets = serial.load(phone_offsets_path)
             #self.phonemes = serial.load(phonemes_path)
             #self.phones = serial.load(phones_path)
             #self.words = serial.load(words_path)
-            #self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
+            self.speaker_id = numpy.asarray(serial.load(speaker_path), 'int')
 
     def _validate_source(self, source):
         """
@@ -303,7 +302,7 @@ class TIMITOnTheFly(Dataset):
         .. todo::
 
             WRITEME
-        """        
+        """
         if data_specs is None:
             data_specs = self._iter_data_specs                
 
@@ -339,12 +338,18 @@ class TIMITOnTheFly(Dataset):
         if rng is None and mode.stochastic:
             rng = self.rng
         
-        return FiniteDatasetIterator(self,
-                                     mode(self.num_examples, batch_size,
-                                          num_batches, rng),
+        t = time.time()
+        if self.num_examples>10**6: # ShuffledSequentialSubsetIterator is slow and memory inefficient with many examples
+            mode = RandomUniformSubsetIterator
+            
+        base_iterator = mode(self.num_examples, batch_size,
+                                          num_batches, rng)        
+        fdi = FiniteDatasetIterator(self,
+                                     base_iterator,
                                      data_specs=data_specs,
                                      return_tuple=return_tuple,
                                      convert=convert)
+        return fdi
 
 
 #class TIMITSequences(Dataset):
