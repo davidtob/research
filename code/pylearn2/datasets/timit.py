@@ -39,7 +39,10 @@ class TIMITOnTheFly(Dataset):
     def __init__(self, which_set, frame_length, overlap=0,
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
-                 noise = False):
+                 noise = False,
+                 speaker_filter = None,
+                 phone_filter = None,
+                 mid_third = False):
         """
         Parameters
         ----------
@@ -70,6 +73,10 @@ class TIMITOnTheFly(Dataset):
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
         self.noise = noise
+        self.speaker_filter = speaker_filter
+        self.phone_filter = phone_filter
+        self.mid_third = mid_third
+        self.use_examples = None
 
         # RNG initialization
         if hasattr(rng, 'random_integers'):
@@ -78,8 +85,11 @@ class TIMITOnTheFly(Dataset):
             self.rng = numpy.random.RandomState(rng)
 
         # Load data from disk
-        self._load_data(which_set)
-
+        if which_set=='train_train' or which_set=='train_valid':
+            self._load_data('train') # In this case we further split the training from disk into a training set and a validation set
+        else:
+            self._load_data(which_set)
+        
         # Slice data
         if stop is None:
             stop = len(self.raw_wav)
@@ -88,14 +98,60 @@ class TIMITOnTheFly(Dataset):
             self.phone_offsets = self.phone_offsets[start:stop]
             #self.phonemes = self.phonemes[start:stop]
             #self.words = self.words[start:stop]
+        
+        # filter based on speaker
+        if self.speaker_filter != None:
+            keep_indices = []
+            for i,sid in enumerate(self.speaker_id):
+                if sid in self.speaker_filter:
+                    keep_indices.append(i)
+            self.raw_wav       = self.raw_wav[keep_indices]
+            self.phone_nums    = self.phone_nums[keep_indices]
+            self.phone_offsets = self.phone_offsets[keep_indices]
+            self.speaker_id    = self.speaker_id[keep_indices]
 
+         # Filter out phones that we do not want to include (making a new sequence for each phone we do include)
+        if self.phone_filter != None :
+            new_raw_wav = []
+            new_phone_nums = []
+            new_phone_offsets = []
+            new_speaker_id = []
+            for sequence_id, phn_nums in enumerate(self.phone_nums):
+                for phn_idx, phn_num in enumerate( phn_nums ):
+                    if phn_num in self.phone_filter:
+                        phn_start = self.phone_offsets[sequence_id][phn_idx]
+                        phn_end   = (list(self.phone_offsets[sequence_id]) + [len(self.raw_wav[sequence_id])-1])[phn_idx+1]
+                        if self.mid_third == True:
+                            phn_start, phn_end = (phn_start + (phn_end-phn_start)/4, phn_end - (phn_end - phn_start)/4)
+                        if phn_start+self.frames_per_example<phn_end:
+                            new_raw_wav.append   (  self.raw_wav[sequence_id][phn_start:phn_end]  )
+                            new_phone_nums.append(  numpy.array([phn_num]) )
+                            new_phone_offsets.append( numpy.array([0]) )
+                            new_speaker_id.append( self.speaker_id[sequence_id] )
+            self.raw_wav = new_raw_wav
+            self.phone_nums = new_phone_nums
+            self.phone_offsets = new_phone_offsets
+            self.speaker_id = new_speaker_id
+        
         examples_per_sequence = [0] + map( lambda x: len(x) - self.frames_per_example, self.raw_wav )
         
-        self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)
-        self.samples_sequences = self.raw_wav
+        self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)        
         self.num_examples = self.cumulative_example_indexes[-1]
-        
+
+        # If requested, make further split of disk training set (only works well if the number of examples is small)
+        if which_set =='train_train' or which_set=='train_valid':
+            digit = numpy.digitize(range(self.num_examples), self.cumulative_example_indexes) - 1
+            ex_indices = zip(digit, numpy.array(range(self.num_examples)) - self.cumulative_example_indexes[digit])
+            numpy.random.shuffle( ex_indices )
+            if which_set == 'train_train':
+                self.use_indices = ex_indices[:int(self.num_examples*0.8)]
+            elif which_set=='train_valid':
+                self.use_indices = ex_indices[int(self.num_examples*0.8):]
+            self.num_examples = len(self.use_indices)
+
         print "number of examples", self.num_examples
+            
+        self.samples_sequences = self.raw_wav
 
         # DataSpecs
         features_space = VectorSpace(
@@ -183,9 +239,12 @@ class TIMITOnTheFly(Dataset):
                                  (features_source, targets_source))
 
     def _fetch_index(self, indices):
-        digit = numpy.digitize(indices, self.cumulative_example_indexes) - 1
-        return zip(digit,
-                   numpy.array(indices) - self.cumulative_example_indexes[digit])
+        if self.use_examples == None:
+            digit = numpy.digitize(indices, self.cumulative_example_indexes) - 1
+            return zip(digit,
+                       numpy.array(indices) - self.cumulative_example_indexes[digit])
+        else:
+            return self.use_examples[ indices ]            
 
     def _load_data(self, which_set):
         """
@@ -338,7 +397,6 @@ class TIMITOnTheFly(Dataset):
         if rng is None and mode.stochastic:
             rng = self.rng
         
-        t = time.time()
         if self.num_examples>10**6: # ShuffledSequentialSubsetIterator is slow and memory inefficient with many examples
             mode = RandomUniformSubsetIterator
             
