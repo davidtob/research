@@ -343,7 +343,6 @@ class TIMITOnTheFly(Dataset):
         """
         if type(indices) is slice:
             indices = numpy.arange(indices.start, indices.stop)
-        print "building minibatch of size", len(indices)
         self._validate_source(source)
         rval = []
         for so in source:                       
@@ -354,7 +353,6 @@ class TIMITOnTheFly(Dataset):
                                            dtype=self.data_specs[0].components[ self.data_specs[1].index(so) ].dtype)
             self.map_functions[ self.data_specs[1].index(so) ](indices, batch_buffer)
             rval.append(batch_buffer)
-        print "done building minibatch"
         return tuple(rval)
 
     @functools.wraps(Dataset.iterator)
