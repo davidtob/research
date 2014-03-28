@@ -341,9 +341,9 @@ class TIMITOnTheFly(Dataset):
 
             WRITEME
         """
-        print "building minibatch of size", len(indices)
         if type(indices) is slice:
             indices = numpy.arange(indices.start, indices.stop)
+        print "building minibatch of size", len(indices)
         self._validate_source(source)
         rval = []
         for so in source:                       
