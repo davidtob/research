@@ -93,6 +93,7 @@ class TIMITOnTheFly(Dataset):
         # Slice data
         if stop is None:
             stop = len(self.raw_wav)
+        self.raw_wav = self.raw_wav[start:stop]
         if not self.audio_only:
             self.phone_nums    = self.phone_nums[start:stop]
             self.phone_offsets = self.phone_offsets[start:stop]
