@@ -167,7 +167,11 @@ class TIMITOnTheFly(Dataset):
             
         def features_map_fn_noise(indices, batch_buffer):
             features_map_fn(indices, batch_buffer )
-            batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape ) # Modify in place
+            if isinstance(self.noise,float):
+                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape ) # Modify in place
+            elif isinstance(self.noise,list):
+                noises = numpy.random.choice( self.noise, (batch_buffer.shape[0], 1) )
+                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, 1, batch_buffer.shape )*noises # Modify in place
                     
         targets_space = VectorSpace(dim=self.frame_length)
         targets_source = 'targets'
