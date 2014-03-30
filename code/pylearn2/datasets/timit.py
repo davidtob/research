@@ -170,7 +170,8 @@ class TIMITOnTheFly(Dataset):
             if isinstance(self.noise,float):
                 batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape ) # Modify in place
             elif isinstance(self.noise,list):
-                noises = numpy.random.choice( self.noise, (batch_buffer.shape[0], 1) )
+                #noises = numpy.random.choice( self.noise, (batch_buffer.shape[0], 1) ) LisaLab does not have numpy 1.7.0 yet
+                noises = numpy.array(self.noise).reshape( (len(self.noise), 1) )[ numpy.random.randint( 0, len(self.noise), batch_buffer.shape[0] ) ]
                 batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, 1, batch_buffer.shape )*noises # Modify in place
                     
         targets_space = VectorSpace(dim=self.frame_length)
