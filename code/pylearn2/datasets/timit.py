@@ -40,6 +40,7 @@ class TIMITOnTheFly(Dataset):
                  frames_per_example=1, start=0, stop=None, audio_only=False,
                  rng=_default_seed,
                  noise = False,
+                 noise_decay = False,
                  speaker_filter = None,
                  phone_filter = None,
                  mid_third = False):
@@ -73,6 +74,7 @@ class TIMITOnTheFly(Dataset):
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
         self.noise = noise
+        self.noise_decay = noise_decay
         self.speaker_filter = speaker_filter
         self.phone_filter = phone_filter
         self.mid_third = mid_third
@@ -164,15 +166,20 @@ class TIMITOnTheFly(Dataset):
                 batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index:example_index
                                                                            + self.frames_per_example].ravel()
             batch_buffer[:,:] = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std # Modify in place
-            
+        
+        if self.noise_decay==False:
+            self.noiseprofile = numpy.ones( (1, self.frames_per_example) )
+        else:
+            self.noiseprofile = numpy.linspace( 1, 0, self.frames_per_example ).reshape( (1,self.frames_per_example ) )
+        
         def features_map_fn_noise(indices, batch_buffer):
             features_map_fn(indices, batch_buffer )
             if isinstance(self.noise,float):
-                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape ) # Modify in place
+                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, self.noise, batch_buffer.shape )*self.noiseprofile # Modify in place
             elif isinstance(self.noise,list):
                 #noises = numpy.random.choice( self.noise, (batch_buffer.shape[0], 1) ) LisaLab does not have numpy 1.7.0 yet
                 noises = numpy.array(self.noise).reshape( (len(self.noise), 1) )[ numpy.random.randint( 0, len(self.noise), batch_buffer.shape[0] ) ]
-                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, 1, batch_buffer.shape )*noises # Modify in place
+                batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, 1, batch_buffer.shape )*noises*self.noiseprofile # Modify in place
                     
         targets_space = VectorSpace(dim=self.frame_length)
         targets_source = 'targets'
