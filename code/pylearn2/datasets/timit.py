@@ -36,8 +36,11 @@ class TIMITOnTheFly(Dataset):
     _mean = 0.0035805809921434142
     _std = 542.48824133746177
 
-    def __init__(self, which_set, frame_length, overlap=0,
-                 frames_per_example=1, start=0, stop=None, audio_only=False,
+    def __init__(self, which_set, frame_length,
+                 overlap=0,
+                 frames_per_example=1,
+                 output_frames_per_example=1,
+                 start=0, stop=None, audio_only=False,
                  rng=_default_seed,
                  noise = False,
                  noise_decay = False,
@@ -68,9 +71,11 @@ class TIMITOnTheFly(Dataset):
             A random number generator used for picking random indices into the
             design matrix when choosing minibatches.
         """
-        self.frame_length = frame_length
+        assert frame_length==1 # Longer frame length implemented through output_frames_per_example
+        self.frame_length = 1#frame_length
         self.overlap = overlap
         self.frames_per_example = frames_per_example
+        self.output_frames_per_example = output_frames_per_example
         self.offset = self.frame_length - self.overlap
         self.audio_only = audio_only
         self.noise = noise
@@ -136,7 +141,7 @@ class TIMITOnTheFly(Dataset):
             self.phone_offsets = new_phone_offsets
             self.speaker_id = new_speaker_id
         
-        examples_per_sequence = [0] + map( lambda x: len(x) - self.frames_per_example, self.raw_wav )
+        examples_per_sequence = [0] + map( lambda x: len(x) - self.frames_per_example - self.output_frames_per_example + 1, self.raw_wav )
         
         self.cumulative_example_indexes = numpy.cumsum(examples_per_sequence)        
         self.num_examples = self.cumulative_example_indexes[-1]
@@ -181,12 +186,12 @@ class TIMITOnTheFly(Dataset):
                 noises = numpy.array(self.noise).reshape( (len(self.noise), 1) )[ numpy.random.randint( 0, len(self.noise), batch_buffer.shape[0] ) ]
                 batch_buffer[:,:] = batch_buffer + numpy.random.normal( 0, 1, batch_buffer.shape )*noises*self.noiseprofile # Modify in place
                     
-        targets_space = VectorSpace(dim=self.frame_length)
+        targets_space = VectorSpace(dim=self.frame_length*self.output_frames_per_example)
         targets_source = 'targets'
         def targets_map_fn(indices, batch_buffer):
             for i, (sequence_index, example_index) in enumerate(self._fetch_index(indices)):
-                batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index
-                                                                           + self.frames_per_example].ravel()
+                batch_buffer[i,:] = self.samples_sequences[sequence_index][example_index + self.frames_per_example
+                                                                           :example_index + self.frames_per_example + self.output_frames_per_example].ravel()
             batch_buffer[:,:] = (batch_buffer - TIMITOnTheFly._mean) / TIMITOnTheFly._std # Modify in place
 
         space_components = [features_space, targets_space]
